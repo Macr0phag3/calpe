@@ -147,7 +147,7 @@ def get_fund_info(fund_code):
 
 print('[*] searching')
 
-fund_codes = ['003095', '161725', '008750', '320007', '001156']
+fund_codes = ['003095', '161725', '008750', '320007', '001156']  # 基金代码
 for code in fund_codes:
     get_fund_info(code)
 
