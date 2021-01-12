@@ -37,11 +37,12 @@ def put_color(string, color, bold=True):
 
 
 @retry()
-def send(url, method='get', params=None, data=None, json=False):
+def send(url, method='get', headers=None, params=None, data=None, json=False):
     response = getattr(requests, method)(
         url,
         params=params,
         data=data,
+        headers=headers,
         timeout=(10, 10)
     )
     if json:
@@ -94,19 +95,27 @@ def show(fund_name, fund_code, data, today_increase=0, is_etf=False):
 
 @retry()
 def get_fund_info(fund_code):
-    params = {
-        'type': 'jjcc',
-        'code': fund_code,
-        'topline': '2000',
-        'year': '',
-        'month': '',
-    }
     today_increase = round(float(re.findall(
         '<span id="fund_gszf" .+>(.+)%</span>',
         send(f'http://fundf10.eastmoney.com/ccmx_{fund_code}.html')
     )[0]), 2)
 
-    html = send('http://fundf10.eastmoney.com/FundArchivesDatas.aspx', params=params)
+    params = {
+        'type': 'jjcc',
+        'code': fund_code,
+        'topline': '1000',
+        'year': '2020',
+        'month': '9',
+        'rt': '0.07460008078625502',
+    }
+    html = send(
+        'http://fundf10.eastmoney.com/FundArchivesDatas.aspx',
+        params=params,
+        headers={
+            'Referer': 'http://fundf10.eastmoney.com/ccmx_161725.html',
+        }
+    )
+    weird = '<th>最新价</th>' not in html
     html = etree.HTML(re.findall('var apidata={ content:"(.+)",arryear', html)[0])
 
     fund_name = html.xpath('/html/body/div[1]/div/h4/label[1]/a/text()')[0]
@@ -114,7 +123,22 @@ def get_fund_info(fund_code):
         show(fund_name, fund_code, [], is_etf=True)
         return
 
-    secids = html.xpath('//*[@id="gpdmList"]/text()')[0]
+    if weird:
+        secids = []
+        root = '/html/body/div[1]/div/table/tbody/tr'
+        for i in range(len(html.xpath(root))):
+            stock_code = html.xpath(f'{root}[{i+1}]/td[2]/a/text()')[0]
+            if stock_code.startswith('0'):
+                stock_code = '0.'+stock_code
+            else:
+                stock_code = '1.'+stock_code
+
+            secids.append(stock_code)
+
+        secids = ','.join(secids)
+
+    else:
+        secids = html.xpath('//*[@id="gpdmList"]/text()')[0]
 
     params = {
         'fields': 'f3,f9,f14',
@@ -134,8 +158,9 @@ def get_fund_info(fund_code):
 
     result = []
     stocks = data['data']['diff']
+    loc = 5 if weird else 7
     for i, stock in enumerate(stocks):
-        precent = html.xpath(f'/html/body/div[1]/div/table/tbody/tr[{i+1}]/td[7]/text()')[0]
+        precent = html.xpath(f'/html/body/div[1]/div/table/tbody/tr[{i+1}]/td[{loc}]/text()')[0]
         pe_rate = float(stock['f9'])
         name = stock['f14'].replace(' ', '')
         # stock_code = stock['f12']
@@ -147,7 +172,7 @@ def get_fund_info(fund_code):
 
 print('[*] searching')
 
-fund_codes = ['003095', '161725', '008750', '320007', '001156']  # 基金代码
+fund_codes = ['161725', '003095', '008750', '320007', '001156']  # 基金代码
 for code in fund_codes:
     get_fund_info(code)
 
